@@ -1,17 +1,22 @@
 import Tree.Mode.entries
+import kotlinx.io.Buffer
+import kotlinx.io.readByteArray
+import kotlinx.io.writeString
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.zip.DeflaterOutputStream
 import java.util.zip.InflaterInputStream
 
-sealed class Object(
-    val prefix: String,
-    val size: Int,
-    val contents: ByteArray,
-) {
+sealed interface Object {
+    val prefix: String
+
+    fun toByteArray(): ByteArray
+    fun getSHA(): String = toByteArray().getSHA1()
+
     fun write(): String {
-        val contents = "$prefix $size".toByteArray() + 0 + contents
+        val contents = toByteArray()
         val sha = contents.getSHA1()
         val compressed = contents.zlibEncode()
         File(".git/objects/${sha.substring(0..1)}").mkdir()
@@ -31,25 +36,53 @@ sealed class Object(
             val size = decoded.sliceArray(typeIndex + 1..<sizeIdx).toString(Charsets.ISO_8859_1)
             val contents = decoded.sliceArray(sizeIdx + 1..<decoded.size)
             return when (type) {
-                "blob" -> Blob(size.toInt(), contents)
-                "tree" -> Tree(size.toInt(), contents)
+                "blob" -> parseBlob(contents)
+                "tree" -> parseTree(contents)
                 else -> error("unknown object of type $type")
             }
+        }
+
+        private fun parseBlob(contents: ByteArray) = Blob(contents)
+
+        @OptIn(ExperimentalStdlibApi::class)
+        private fun parseTree(contents: ByteArray): Tree {
+            val entries = mutableListOf<Tree.Entry>()
+            var i = 0
+            while (i < contents.size) {
+                val modeIdx = contents.indexOf(' '.code.toByte(), i)
+                val mode = contents.sliceArray(i..<modeIdx).toString(Charsets.ISO_8859_1)
+                i = modeIdx + 1
+
+                val nameIdx = contents.indexOf(0, i)
+                val name = contents.sliceArray(i..<nameIdx).toString(Charsets.ISO_8859_1)
+                i = nameIdx + 1
+
+                val sha = contents.sliceArray(i..<i + 20).toHexString()
+                i += 20
+                entries.add(Tree.Entry(Tree.Mode.from(mode.toInt()), name, sha))
+            }
+            return Tree(entries)
         }
     }
 }
 
-class Blob(size: Int, contents: ByteArray) : Object("blob", size, contents) {
+class Blob(val contents: ByteArray) : Object {
+    override val prefix: String = "blob"
+
+    override fun toByteArray(): ByteArray = "$prefix ${contents.size}".toByteArray() + 0 + contents
+
     companion object {
         fun fromFile(file: File): Object {
             val contents = file.readBytes()
-            return Blob(contents.size, contents)
+            return Blob(contents)
         }
+
+
     }
 }
 
 @OptIn(ExperimentalStdlibApi::class)
-class Tree(size: Int, contents: ByteArray) : Object("tree", size, contents) {
+class Tree(val entries: List<Entry>) : Object {
     enum class Mode(val value: Int) {
         RegularFile(100644),
         ExecutableFile(100755),
@@ -66,29 +99,65 @@ class Tree(size: Int, contents: ByteArray) : Object("tree", size, contents) {
         val mode: Mode,
         val name: String,
         val sha: String,
-    )
-
-    val entries = mutableListOf<Entry>()
-
-    init {
-        var i = 0
-        while (i < contents.size) {
-            val modeIdx = contents.indexOf(' '.code.toByte(), i)
-            val mode = contents.sliceArray(i..<modeIdx).toString(Charsets.ISO_8859_1)
-            i = modeIdx + 1
-
-            val nameIdx = contents.indexOf(0, i)
-            val name = contents.sliceArray(i..<nameIdx).toString(Charsets.ISO_8859_1)
-            i = nameIdx + 1
-
-            val sha = contents.sliceArray(i..<i + 20).toHexString()
-            i += 20
-            entries.add(Entry(Mode.from(mode.toInt()), name, sha))
+    ) {
+        fun toByteArray(): ByteArray {
+            val buffer = Buffer()
+            buffer.writeString(mode.value.toString())
+            buffer.writeByte(' '.code.toByte())
+            buffer.writeString(name)
+            buffer.writeByte(0)
+            buffer.write(sha.hexToByteArray())
+            return buffer.readByteArray()
         }
     }
 
     fun getNames(): List<String> =
         entries.map { it.name }
+
+    override val prefix: String = "tree"
+
+    override fun toByteArray(): ByteArray {
+        val buffer = Buffer()
+        entries.forEach { buffer.write(it.toByteArray()) }
+        val bytes = buffer.readByteArray()
+        return "tree ${bytes.size}".toByteArray() + 0 + bytes
+    }
+
+    override fun write(): String {
+        entries.forEach { entry ->
+            if (entry.mode == Mode.Directory) fromDir(File(entry.name)).write()
+        }
+        return super.write()
+    }
+
+    companion object {
+        val gitignored = setOf(".git")
+
+        fun fromDir(dir: File): Tree {
+            assert(dir.isDirectory())
+            val entries = mutableListOf<Entry>()
+            val files = dir.listFiles() ?: arrayOf<File>()
+            for (file in files) {
+                if (file.isDirectory() && file.name in gitignored) continue
+                if (file.isDirectory()) {
+                    val tree = fromDir(file)
+                    val sha = tree.getSHA()
+                    entries.add(Entry(Mode.Directory, file.name, sha))
+                } else {
+                    val blob = Blob.fromFile(file)
+                    val sha = blob.getSHA()
+                    val mode = when {
+                        file.canExecute() -> Mode.ExecutableFile
+                        Files.isSymbolicLink(file.toPath()) -> Mode.SymbolicLink
+                        else -> Mode.RegularFile
+                    }
+                    entries.add(Entry(mode, file.name, sha))
+                }
+            }
+            entries.sortBy(Entry::name)
+            return Tree(entries)
+        }
+    }
 }
 
 fun ByteArray.zlibEncode(): ByteArray {

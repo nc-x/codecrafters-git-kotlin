@@ -21,6 +21,7 @@ fun main(args: Array<String>) {
             assert(args[1] == "-p")
             val sha = args[2]
             val obj = Object.fromSHA(sha)
+            if (obj !is Blob) error("The provided SHA is for '${obj.prefix}'. Expected: 'blob'")
             print(obj.contents.toString(Charsets.ISO_8859_1))
         }
 
@@ -38,6 +39,12 @@ fun main(args: Array<String>) {
             val obj = Object.fromSHA(sha)
             if (obj !is Tree) error("The provided SHA is for '${obj.prefix}'. Expected: 'tree'")
             obj.getNames().forEach(::println)
+        }
+
+        "write-tree" -> {
+            val tree = Tree.fromDir(File("."))
+            val sha = tree.write()
+            println(sha)
         }
 
         else -> {
