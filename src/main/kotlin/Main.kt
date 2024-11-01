@@ -1,4 +1,7 @@
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.security.MessageDigest
+import java.util.zip.DeflaterOutputStream
 import java.util.zip.InflaterInputStream
 import kotlin.system.exitProcess
 
@@ -21,9 +24,20 @@ fun main(args: Array<String>) {
         "cat-file" -> {
             assert(args[1] == "-p")
             val blobSha = args[2]
-            val file = File(".git/objects/${blobSha.substring(0..1)}/${blobSha.substring(2)}")
-            val contents = zlibDecode(file.readBytes()).substringAfter(0.toChar())
+            val file = File(".git/objects/${blobSha.substring(0..1)}/${blobSha.substring(2)}").readBytes()
+            val contents = file.zlibDecode().substringAfter(0.toChar())
             print(contents)
+        }
+
+        "hash-object" -> {
+            assert(args[1] == "-w")
+            val file = File(args[2]).readBytes()
+            val contents = "blob ${file.size}".toByteArray() + 0 + file
+            val blobSha = contents.getSHA1()
+            val compressed = contents.zlibEncode()
+            println(blobSha)
+            File(".git/objects/${blobSha.substring(0..1)}").mkdir()
+            File(".git/objects/${blobSha.substring(0..1)}/${blobSha.substring(2)}").writeBytes(compressed)
         }
 
         else -> {
@@ -33,5 +47,15 @@ fun main(args: Array<String>) {
     }
 }
 
-fun zlibDecode(data: ByteArray) =
-    InflaterInputStream(data.inputStream()).bufferedReader().readText()
+fun ByteArray.zlibEncode(): ByteArray {
+    val output = ByteArrayOutputStream()
+    DeflaterOutputStream(output).use { it.write(this) }
+    return output.toByteArray()
+}
+
+fun ByteArray.zlibDecode() =
+    InflaterInputStream(this.inputStream()).bufferedReader().use { it.readText() }
+
+@OptIn(ExperimentalStdlibApi::class)
+fun ByteArray.getSHA1(): String =
+    MessageDigest.getInstance("SHA-1").digest(this).toHexString()
