@@ -160,6 +160,26 @@ class Tree(val entries: List<Entry>) : Object {
     }
 }
 
+class Commit(val treeSha: String, val parentSha: String?, val message: String) : Object {
+    override val prefix = "commit"
+
+    override fun toByteArray(): ByteArray {
+        val commit = buildString {
+            append("tree $treeSha\n")
+            parentSha?.let { append("parent $parentSha\n") }
+            val timestamp = System.currentTimeMillis() / 1000
+            append("author ABC <abc@example.com> $timestamp +0000\n")
+            append("committer ABC <abc@example.com> $timestamp +0000\n")
+            append("\n")
+            append(message)
+            append("\n")
+        }
+        val bytes = commit.toByteArray()
+        return "$prefix ${bytes.size}".toByteArray() + 0 + bytes
+    }
+}
+
+
 fun ByteArray.zlibEncode(): ByteArray {
     val output = ByteArrayOutputStream()
     DeflaterOutputStream(output).use { it.write(this) }

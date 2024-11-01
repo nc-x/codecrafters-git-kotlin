@@ -47,6 +47,17 @@ fun main(args: Array<String>) {
             println(sha)
         }
 
+        "commit-tree" -> {
+            val treeSha = args[1]
+            assert(args[2] == "-p")
+            val parentSha = args[3]
+            assert(args[4] == "-p")
+            val message = args[5]
+            val commit = Commit(treeSha, parentSha, message)
+            val sha = commit.write()
+            println(sha)
+        }
+
         else -> {
             println("Unknown command: ${args[0]}")
             exitProcess(1)
