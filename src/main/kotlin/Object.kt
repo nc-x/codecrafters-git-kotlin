@@ -29,15 +29,19 @@ sealed interface Object {
             val dirName = sha.take(2)
             val fname = sha.drop(2)
             val file = File(".git/objects/${dirName}/${fname}")
-            val decoded = file.readBytes().zlibDecode()
-            val typeIndex = decoded.indexOf(' '.code.toByte())
-            val type = decoded.sliceArray(0..<typeIndex).toString(Charsets.ISO_8859_1)
-            val sizeIdx = decoded.indexOf(0)
-            val size = decoded.sliceArray(typeIndex + 1..<sizeIdx).toString(Charsets.ISO_8859_1)
-            val contents = decoded.sliceArray(sizeIdx + 1..<decoded.size)
+            return fromUncompressedBytes(file.readBytes().zlibDecode())
+        }
+
+        fun fromUncompressedBytes(bytes: ByteArray): Object {
+            val typeIndex = bytes.indexOf(' '.code.toByte())
+            val type = bytes.sliceArray(0..<typeIndex).toString(Charsets.ISO_8859_1)
+            val sizeIdx = bytes.indexOf(0)
+            val size = bytes.sliceArray(typeIndex + 1..<sizeIdx).toString(Charsets.ISO_8859_1)
+            val contents = bytes.sliceArray(sizeIdx + 1..<bytes.size)
             return when (type) {
                 "blob" -> parseBlob(contents)
                 "tree" -> parseTree(contents)
+                "commit" -> parseCommit(contents)
                 else -> error("unknown object of type $type")
             }
         }
@@ -63,10 +67,16 @@ sealed interface Object {
             }
             return Tree(entries)
         }
+
+        private fun parseCommit(bytes: ByteArray): Object {
+            val commit = bytes.toString(Charsets.ISO_8859_1)
+            val (header, message) = commit.split("\n\n", limit = 2)
+            return Commit(header.split("\n"), message.trim())
+        }
     }
 }
 
-class Blob(val contents: ByteArray) : Object {
+data class Blob(val contents: ByteArray) : Object {
     override val prefix: String = "blob"
 
     override fun toByteArray(): ByteArray = "$prefix ${contents.size}".toByteArray() + 0 + contents
@@ -79,10 +89,28 @@ class Blob(val contents: ByteArray) : Object {
 
 
     }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as Blob
+
+        if (!contents.contentEquals(other.contents)) return false
+        if (prefix != other.prefix) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = contents.contentHashCode()
+        result = 31 * result + prefix.hashCode()
+        return result
+    }
 }
 
 @OptIn(ExperimentalStdlibApi::class)
-class Tree(val entries: List<Entry>) : Object {
+data class Tree(val entries: List<Entry>) : Object {
     enum class Mode(val value: Int) {
         RegularFile(100644),
         ExecutableFile(100755),
@@ -160,17 +188,13 @@ class Tree(val entries: List<Entry>) : Object {
     }
 }
 
-class Commit(val treeSha: String, val parentSha: String?, val message: String) : Object {
+data class Commit(val header: List<String>, val message: String) : Object {
     override val prefix = "commit"
 
     override fun toByteArray(): ByteArray {
         val commit = buildString {
-            append("tree $treeSha\n")
-            parentSha?.let { append("parent $parentSha\n") }
-            val timestamp = System.currentTimeMillis() / 1000
-            append("author ABC <abc@example.com> $timestamp +0000\n")
-            append("committer ABC <abc@example.com> $timestamp +0000\n")
-            append("\n")
+            append(header.joinToString("\n"))
+            append("\n\n")
             append(message)
             append("\n")
         }

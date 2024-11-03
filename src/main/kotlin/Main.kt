@@ -1,7 +1,8 @@
 import java.io.File
+import kotlin.io.path.Path
 import kotlin.system.exitProcess
 
-fun main(args: Array<String>) {
+suspend fun main(args: Array<String>) {
     if (args.isEmpty()) {
         println("Usage: your_program.sh <command> [<args>]")
         exitProcess(1)
@@ -53,9 +54,23 @@ fun main(args: Array<String>) {
             val parentSha = args[3]
             assert(args[4] == "-p")
             val message = args[5]
-            val commit = Commit(treeSha, parentSha, message)
+            val header = buildList<String> {
+                add("tree $treeSha\n")
+                add("parent $parentSha\n")
+                val timestamp = System.currentTimeMillis() / 1000
+                add("author ABC <abc@example.com> $timestamp +0000\n")
+                add("committer ABC <abc@example.com> $timestamp +0000\n")
+            }
+            val commit = Commit(header, message)
             val sha = commit.write()
             println(sha)
+        }
+
+        "clone" -> {
+            assert(args.size == 3)
+            val url = args[1]
+            val dir = Path(args[2])
+            clone(url, dir)
         }
 
         else -> {

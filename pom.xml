@@ -96,5 +96,15 @@
             <artifactId>kotlinx-io-core-jvm</artifactId>
             <version>0.5.4</version>
         </dependency>
+        <dependency>
+            <groupId>io.ktor</groupId>
+            <artifactId>ktor-client-core-jvm</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.ktor</groupId>
+            <artifactId>ktor-client-cio-jvm</artifactId>
+            <version>3.0.0</version>
+        </dependency>
     </dependencies>
 </project>
