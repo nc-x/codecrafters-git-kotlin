@@ -16,12 +16,12 @@ sealed interface Object {
     fun toDiskFormat(): ByteArray
     fun getSHA(): String = toDiskFormat().getSHA1()
 
-    fun write(): String {
+    fun write(dir: String = "."): String {
         val contents = toDiskFormat()
         val sha = contents.getSHA1()
         val compressed = contents.zlibEncode()
-        File(".git/objects/${sha.substring(0..1)}").mkdir()
-        File(".git/objects/${sha.substring(0..1)}/${sha.substring(2)}").writeBytes(compressed)
+        File(dir, ".git/objects/${sha.substring(0..1)}").mkdir()
+        File(dir, ".git/objects/${sha.substring(0..1)}/${sha.substring(2)}").writeBytes(compressed)
         return sha
     }
 
@@ -161,11 +161,11 @@ data class Tree(val entries: List<Entry>) : Object {
         return "tree ${bytes.size}".toByteArray() + 0 + bytes
     }
 
-    override fun write(): String {
+    override fun write(dir: String): String {
         entries.forEach { entry ->
-            if (entry.mode == Mode.Directory) fromDir(File(entry.name)).write()
+            if (entry.mode == Mode.Directory) fromDir(File(dir, entry.name)).write(dir)
         }
-        return super.write()
+        return super.write(dir)
     }
 
     companion object {

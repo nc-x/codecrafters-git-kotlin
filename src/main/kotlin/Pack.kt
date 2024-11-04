@@ -19,7 +19,6 @@ data class Pack(val buffer: Buffer) {
         val numObjects = buffer.readInt()
         repeat(numObjects) {
             val obj = parseObject(buffer)
-            println("${obj.getSHA()} ${obj.prefix}")
             objects[obj.getSHA()] = obj
         }
         return objects.values

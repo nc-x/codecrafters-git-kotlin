@@ -1,5 +1,4 @@
 import java.io.File
-import kotlin.io.path.Path
 import kotlin.system.exitProcess
 
 suspend fun main(args: Array<String>) {
@@ -10,11 +9,7 @@ suspend fun main(args: Array<String>) {
 
     when (args[0]) {
         "init" -> {
-            val gitDir = File(".git")
-            gitDir.mkdir()
-            File(gitDir, "objects").mkdir()
-            File(gitDir, "refs").mkdir()
-            File(gitDir, "HEAD").writeText("ref: refs/heads/master\n")
+            init()
             println("Initialized git directory")
         }
 
@@ -69,7 +64,7 @@ suspend fun main(args: Array<String>) {
         "clone" -> {
             assert(args.size == 3)
             val url = args[1]
-            val dir = Path(args[2])
+            val dir = args[2]
             clone(url, dir)
         }
 
