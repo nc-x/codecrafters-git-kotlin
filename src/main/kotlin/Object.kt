@@ -13,10 +13,11 @@ sealed interface Object {
     val prefix: String
 
     fun toByteArray(): ByteArray
-    fun getSHA(): String = toByteArray().getSHA1()
+    fun toDiskFormat(): ByteArray
+    fun getSHA(): String = toDiskFormat().getSHA1()
 
     fun write(): String {
-        val contents = toByteArray()
+        val contents = toDiskFormat()
         val sha = contents.getSHA1()
         val compressed = contents.zlibEncode()
         File(".git/objects/${sha.substring(0..1)}").mkdir()
@@ -79,7 +80,12 @@ sealed interface Object {
 data class Blob(val contents: ByteArray) : Object {
     override val prefix: String = "blob"
 
-    override fun toByteArray(): ByteArray = "$prefix ${contents.size}".toByteArray() + 0 + contents
+    override fun toByteArray(): ByteArray = contents
+
+    override fun toDiskFormat(): ByteArray {
+        val bytes = toByteArray()
+        return "$prefix ${bytes.size}".toByteArray() + 0 + bytes
+    }
 
     companion object {
         fun fromFile(file: File): Object {
@@ -147,7 +153,11 @@ data class Tree(val entries: List<Entry>) : Object {
     override fun toByteArray(): ByteArray {
         val buffer = Buffer()
         entries.forEach { buffer.write(it.toByteArray()) }
-        val bytes = buffer.readByteArray()
+        return buffer.readByteArray()
+    }
+
+    override fun toDiskFormat(): ByteArray {
+        val bytes = toByteArray()
         return "tree ${bytes.size}".toByteArray() + 0 + bytes
     }
 
@@ -198,7 +208,11 @@ data class Commit(val header: List<String>, val message: String) : Object {
             append(message)
             append("\n")
         }
-        val bytes = commit.toByteArray()
+        return commit.toByteArray()
+    }
+
+    override fun toDiskFormat(): ByteArray {
+        val bytes = toByteArray()
         return "$prefix ${bytes.size}".toByteArray() + 0 + bytes
     }
 }
