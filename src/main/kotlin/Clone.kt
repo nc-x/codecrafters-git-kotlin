@@ -11,12 +11,11 @@ suspend fun clone(url: String, outDir: String) {
     val packUrl = Url("$url/${packUrl}")
 
     val refs = Ref.discoverRefs(infoRefs)
-    val objects = refs
-        .filter { ref -> ref.isSymRefTo == null }
-        .flatMap { ref ->
-            val pack = Pack.getPackForRef(packUrl, ref)
-            pack.parseObjects()
-        }
+
+    // we only support downloading HEAD atm
+    val head = refs.find { it.name == "HEAD" } ?: error("HEAD not found")
+    val pack = Pack.getPackForRef(packUrl, head)
+    val objects = pack.parseObjects()
 
     // create directory
     File(outDir).mkdir()
@@ -25,11 +24,29 @@ suspend fun clone(url: String, outDir: String) {
     init(outDir)
 
     File(outDir, ".git/refs/heads/").mkdirs()
-    val headSha = refs.find { it.name == "HEAD" }?.hash ?: error("HEAD not found")
-    File(outDir, ".git/refs/heads/master").writeText(headSha)
+    File(outDir, ".git/refs/heads/master").writeText(head.hash)
 
     // write the objects
     for (obj in objects) {
         obj.write(outDir)
+    }
+
+    // generate the actual files
+    val commit = Object.fromSHA(head.hash, outDir) as Commit
+    val treeSha = commit.header.find { it.startsWith("tree ") }?.removePrefix("tree ") ?: error("tree sha not found")
+    val tree = Object.fromSHA(treeSha, outDir) as Tree
+    tree.entries.forEach { generateFile(outDir, outDir, it) }
+}
+
+private fun generateFile(outDir: String, fileDir: String, entry: Tree.Entry) {
+    if (entry.mode == Tree.Mode.Directory) {
+        File(fileDir, entry.name).mkdirs()
+        val tree = Object.fromSHA(entry.sha, outDir) as Tree
+        tree.entries.forEach { generateFile(outDir, "$fileDir/${entry.name}", it) }
+    } else {
+        val sha = entry.sha
+        val blob = Object.fromSHA(sha, outDir)
+        require(blob is Blob)
+        File(fileDir, entry.name).writeBytes(blob.contents)
     }
 }

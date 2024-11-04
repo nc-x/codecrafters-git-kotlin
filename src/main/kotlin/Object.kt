@@ -26,10 +26,10 @@ sealed interface Object {
     }
 
     companion object {
-        fun fromSHA(sha: String): Object {
+        fun fromSHA(sha: String, dir: String = "."): Object {
             val dirName = sha.take(2)
             val fname = sha.drop(2)
-            val file = File(".git/objects/${dirName}/${fname}")
+            val file = File(dir, ".git/objects/${dirName}/${fname}")
             return fromUncompressedBytes(file.readBytes().zlibDecode())
         }
 
@@ -163,7 +163,7 @@ data class Tree(val entries: List<Entry>) : Object {
 
     override fun write(dir: String): String {
         entries.forEach { entry ->
-            if (entry.mode == Mode.Directory) fromDir(File(dir, entry.name)).write(dir)
+            if (entry.mode == Mode.Directory) fromDir(File(entry.name)).write(dir)
         }
         return super.write(dir)
     }

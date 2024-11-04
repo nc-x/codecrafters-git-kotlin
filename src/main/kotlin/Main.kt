@@ -50,11 +50,11 @@ suspend fun main(args: Array<String>) {
             assert(args[4] == "-p")
             val message = args[5]
             val header = buildList<String> {
-                add("tree $treeSha\n")
-                add("parent $parentSha\n")
+                add("tree $treeSha")
+                add("parent $parentSha")
                 val timestamp = System.currentTimeMillis() / 1000
-                add("author ABC <abc@example.com> $timestamp +0000\n")
-                add("committer ABC <abc@example.com> $timestamp +0000\n")
+                add("author ABC <abc@example.com> $timestamp +0000")
+                add("committer ABC <abc@example.com> $timestamp +0000")
             }
             val commit = Commit(header, message)
             val sha = commit.write()
